@@ -69,7 +69,7 @@ QuadTree.prototype.remove = function(entry) {
   this.findNode_(entry, function(node) {
     var idx = node.entries_.indexOf(entry);
     if (idx == -1) {
-      throw "missing entry".
+      throw "missing entry";
     }
 
     node.entries_.pop(idx);
@@ -77,11 +77,11 @@ QuadTree.prototype.remove = function(entry) {
 };
 
 QuadTree.prototype.findNode_ = function(entry, handler) {
-  if (entry.area.l < -this.size_ ||
+  while (entry.area.l < -this.size_ ||
       entry.area.t < -this.size_ ||
       entry.area.r >= this.size_ ||
       entry.area.b >= this.size_) {
-    throw "too small";
+    this.increaseSize_();
   }
 
   var entrySize = Math.max(
@@ -113,6 +113,24 @@ QuadTree.prototype.findNode_ = function(entry, handler) {
   recurse(this.root_, this.size_ * 2, -this.size, -this.size_);
 };
 
+QuadTree.prototype.increaseSize_ = function() {
+  var root = this.root_;
+  var newRoot = new Node();
+
+  for (var y = 0; y < 2; ++y) {
+    for (var x = 0; x < 2; ++x) {
+      var newChild = new Node();
+      var childIdx = 2 * y + x;
+      var grandChildIdx = 2 * (1 - y) + (1 - x);
+      newChild.children_[grandChildIdx] = root.children_[childIdx];
+      newRoot.children_[childIdx] = newChild;
+    }
+  }
+
+  this.root_ = newRoot;
+  this.size_ *= 2;
+};
+
 // Create the canvas
 var canvas = document.createElement("canvas");
 var ctx = canvas.getContext("2d");
@@ -124,6 +142,16 @@ var NUM_SQUARES = 100;
 var SQUARE_SIZE = 20;
 var SQUARE_SPEED_MAX = 10;
 
+var quadTree = new QuadTree();
+
+function squareEntry(square) {
+  return new Entry(
+      new Rect(
+          square[0], square[1],
+          square[0] + SQUARE_SIZE, square[1] + SQUARE_SIZE),
+      square);
+}
+
 var squares = new Array();
 for (var i = 0; i < NUM_SQUARES; ++i) {
   var x = Math.random() * (canvas.width - SQUARE_SIZE);
@@ -131,25 +159,32 @@ for (var i = 0; i < NUM_SQUARES; ++i) {
   var vx = (2 * Math.random() - 1) * SQUARE_SPEED_MAX;
   var vy = (2 * Math.random() - 1) * SQUARE_SPEED_MAX;
   squares[i] = [x, y, vx, vy];
+  quadTree.insert(squareEntry(squares[i]));
 }
 
 function updateTimers(dt) {
   for (var i = 0; i < squares.length; ++i) {
-    squares[i][0] += dt * squares[i][2];
-    if (squares[i][0] < 0 && squares[i][2] < 0) {
-      squares[i][2] *= -1;
+    var square = squares[i];
+
+    quadTree.remove(squareEntry(square));
+
+    square[0] += dt * square[2];
+    if (square[0] < 0 && square[2] < 0) {
+      square[2] *= -1;
     }
-    if (squares[i][0] + SQUARE_SIZE >= canvas.width && squares[i][2] > 0) {
-      squares[i][2] *= -1;
+    if (square[0] + SQUARE_SIZE >= canvas.width && square[2] > 0) {
+      square[2] *= -1;
     }
 
-    squares[i][1] += dt * squares[i][3];
-    if (squares[i][1] < 0 && squares[i][3] < 0) {
-      squares[i][3] *= -1;
+    square[1] += dt * square[3];
+    if (square[1] < 0 && square[3] < 0) {
+      square[3] *= -1;
     }
-    if (squares[i][1] + SQUARE_SIZE >= canvas.height && squares[i][3] > 0) {
-      squares[i][3] *= -1;
+    if (square[1] + SQUARE_SIZE >= canvas.height && square[3] > 0) {
+      square[3] *= -1;
     }
+
+    quadTree.insert(squareEntry(square));
   }
 }
 
