@@ -139,6 +139,51 @@ QuadTree.prototype.increaseSize_ = function() {
   this.size_ *= 2;
 };
 
+function ListenerSet() {
+  this.listeners = [];
+  this.lockCount = 0;
+}
+
+ListenerSet.prototype.report = function() {
+  ++this.lockCount;
+
+  for (var i = 0; i < this.listeners.length; ++i) {
+    var listener = this.listeners[i];
+    if (listener !== null) {
+      listener.apply(this, arguments);
+    }
+  }
+
+  if (0 == --this.lockCount) {
+    this.listeners = this.listeners.filter(function (l) {return l !== null;});
+  }
+};
+
+ListenerSet.prototype.add = function(listener) {
+  if (listener === null || typeof listener === 'undefined') {
+    throw "listener null";
+  }
+
+  if (this.listeners.indexOf(listener) != -1) {
+    throw "duplicate listener";
+  }
+
+  this.listeners.push(listener);
+};
+
+ListenerSet.prototype.remove = function(listener) {
+  if (listener === null || typeof listener === 'undefined') {
+    throw "listener null";
+  }
+
+  var idx = this.listeners.indexOf(listener);
+  if (idx == -1) {
+    throw "invalid listener";
+  }
+
+  this.listeners[idx] = null;
+};
+
 // Create the canvas
 var canvas = document.createElement("canvas");
 var ctx = canvas.getContext("2d");
@@ -214,7 +259,7 @@ function render() {
         foundSelf = true;
       }
     });
-    
+
     if (!foundSelf) {
       throw "self not in array";
     }
@@ -230,13 +275,13 @@ function render() {
 // The main game loop
 var lastTime = Date.now();
 function update() {
-    var now = Date.now();
-    var dt = Math.min(0.1, (now - lastTime) / 1000.0);
+  var now = Date.now();
+  var dt = Math.min(0.1, (now - lastTime) / 1000.0);
 
-    updateTimers(dt);
-    render();
+  updateTimers(dt);
+  render();
 
-    lastTime = now;
+  lastTime = now;
 }
 
 function runAnimLoop(fn) {
@@ -248,4 +293,23 @@ function runAnimLoop(fn) {
   window.webkitRequestAnimationFrame(run);
 }
 
-runAnimLoop(update);
+//runAnimLoop(update);
+var listenerSet = new ListenerSet();
+
+function listener(text) {
+  alert('listener');
+  listenerSet.remove(listener2);
+  //listenerSet.remove(listener);
+  //listenerSet.add(listener2);
+}
+
+function listener2(text) {
+  alert('listener2');
+}
+
+listenerSet.add(listener);
+listenerSet.add(listener2);
+
+listenerSet.report('hello');
+listenerSet.report('hello');
+
