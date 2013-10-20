@@ -27,7 +27,7 @@ function QuadTree() {
   this.root_ = new Node();
 }
 
-QuadTree.prototype.visit = function(visitor, query) {
+QuadTree.prototype.visit = function(query, visitor) {
   function visitRecurse(node, size, nodeX, nodeY) {
     // Check whether we loosely fit (ie objects here could overlap the next
     // items.
@@ -50,7 +50,7 @@ QuadTree.prototype.visit = function(visitor, query) {
         var child = node.children_[y * 2 + x];
         if (child !== null) {
           visitRecurse(child, size / 2,
-              x * (nodeX + size / 2), y * (nodeY + size / 2));
+              nodeX + x * size / 2, nodeY + y * size / 2);
         }
       }
     }
@@ -67,12 +67,20 @@ QuadTree.prototype.insert = function(entry) {
 
 QuadTree.prototype.remove = function(entry) {
   this.findNode_(entry, function(node) {
-    var idx = node.entries_.indexOf(entry);
+    
+    // Find the payload in the list of entries.
+    var idx = -1;
+    for (var i = 0; i < node.entries_.length; ++i) {
+      if (node.entries_[i].payload === entry.payload) {
+        idx = i;
+      }
+    }
+
     if (idx == -1) {
       throw "missing entry";
     }
 
-    node.entries_.pop(idx);
+    node.entries_.splice(idx, 1);
   });
 };
 
@@ -96,8 +104,8 @@ QuadTree.prototype.findNode_ = function(entry, handler) {
     }
 
     // Otherwise recurse.
-    var childX = (entry.area.x >= nodeX + size / 2) ? 1 : 0;
-    var childY = (entry.area.y >= nodeY + size / 2) ? 1 : 0;
+    var childX = (entry.area.l >= nodeX + size / 2) ? 1 : 0;
+    var childY = (entry.area.t >= nodeY + size / 2) ? 1 : 0;
     var childIdx = childY * 2 + childX;
     var child = node.children_[childIdx];
 
@@ -107,10 +115,10 @@ QuadTree.prototype.findNode_ = function(entry, handler) {
       node.children_[childIdx] = child;
     }
     recurse(child, size / 2,
-        nodeX + childX * size / 2, nodeY + childX * size / 2);
+        nodeX + childX * size / 2, nodeY + childY * size / 2);
   }
 
-  recurse(this.root_, this.size_ * 2, -this.size, -this.size_);
+  recurse(this.root_, this.size_ * 2, -this.size_, -this.size_);
 };
 
 QuadTree.prototype.increaseSize_ = function() {
@@ -144,12 +152,14 @@ var SQUARE_SPEED_MAX = 10;
 
 var quadTree = new QuadTree();
 
+function squareRect(square) {
+  return new Rect(
+      square[0], square[1],
+      square[0] + SQUARE_SIZE, square[1] + SQUARE_SIZE);
+}
+
 function squareEntry(square) {
-  return new Entry(
-      new Rect(
-          square[0], square[1],
-          square[0] + SQUARE_SIZE, square[1] + SQUARE_SIZE),
-      square);
+  return new Entry(squareRect(square), square);
 }
 
 var squares = new Array();
@@ -193,8 +203,27 @@ function render() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = "#FF0000";
+  ctx.strokeStyle = "#FF0000";
   for (var i = 0; i < squares.length; ++i) {
-    ctx.fillRect(squares[i][0], squares[i][1], 20, 20);
+    var intersects = false;
+    var foundSelf = false;
+    quadTree.visit(squareRect(squares[i]), function(entry) {
+      if (entry.payload !== squares[i]) {
+        intersects = true;
+      } else {
+        foundSelf = true;
+      }
+    });
+    
+    if (!foundSelf) {
+      throw "self not in array";
+    }
+
+    if (intersects) {
+      ctx.strokeRect(squares[i][0], squares[i][1], 20, 20);
+    } else {
+      ctx.fillRect(squares[i][0], squares[i][1], 20, 20);
+    }
   }
 }
 
@@ -202,7 +231,7 @@ function render() {
 var lastTime = Date.now();
 function update() {
     var now = Date.now();
-    var dt = (now - lastTime) / 1000.0;
+    var dt = Math.min(0.1, (now - lastTime) / 1000.0);
 
     updateTimers(dt);
     render();
