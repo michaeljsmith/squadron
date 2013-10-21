@@ -184,34 +184,115 @@ ListenerSet.prototype.remove = function(listener) {
   this.listeners[idx] = null;
 };
 
-function Primitive(value) {
+var deferred = [];
+
+function defer(fn) {
+  deferred.push(fn);
+}
+
+function cleanup() {
+  for (var i = deferred.length - 1; i >= 0; --i) {
+    deferred[i]();
+  }
+
+  deferred = [];
+}
+
+function ReadPrimitive(value) {
   this.value_ = value;
   this.listeners_ = new ListenerSet();
 }
 
-Primitive.prototype.cleanup = function() {
-};
-
-Primitive.prototype.get = function() {
+ReadPrimitive.prototype.get = function() {
   return this.value_;
 };
 
-Primitive.prototype.set = function(value) {
+ReadPrimitive.prototype.set_ = function(value) {
   this.value_ = value;
   this.listeners_.report();
 };
 
-Primitive.prototype.listeners = function() {
+ReadPrimitive.prototype.listeners = function() {
   return this.listeners_;
 };
 
-function Vector(x, y) {
-  this.x = x;
-  this.y = y;
+function Const(value) {
+  // TODO: optimize by ignoring listeners.
+  return new ReadPrimitive(value);
 }
 
-Vector.prototype.cleanup = function() {
+ReadWritePrimitive.prototype = new ReadPrimitive();
+ReadWritePrimitive.prototype.constructor = ReadWritePrimitive;
+
+function ReadWritePrimitive(value) {
+  ReadPrimitive.call(this, value);
+}
+
+ReadWritePrimitive.prototype.set = function(value) {
+  this.set_(value);
 };
+
+function Vector(x_, y_) {
+  return {
+    x: x_,
+    y: y_
+  };
+}
+
+function Application(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+
+  function calculate() {
+    var argValues = [];
+    for (var i = 0; i < args.length; ++i) {
+      argValues.push(args[i].get());
+    }
+
+    return fn.apply(this, argValues);
+  }
+
+  var result = new ReadPrimitive(calculate());
+
+  function onArgChanged() {
+    result.set_(calculate());
+  }
+
+  for (var i = 0; i < args.length; ++i) {
+    var arg = args[i];
+
+    arg.listeners().add(onArgChanged);
+
+    defer(function() {
+      arg.listeners().remove(onArgChanged);
+    });
+  }
+
+  return result;
+}
+
+function Sin(x) {
+  return Application(Math.sin, x);
+}
+
+function Sum() {
+  function calculate() {
+    return Array.prototype.reduce.call(arguments,
+      function (x, y) {return x + y});
+  }
+
+  var args = Array.prototype.slice.call(arguments, 0);
+  return Application.apply(this, [calculate].concat(args));
+}
+
+function Product() {
+  function calculate() {
+    return Array.prototype.reduce.call(arguments,
+      function (x, y) {return x * y});
+  }
+
+  var args = Array.prototype.slice.call(arguments, 0);
+  return Application.apply(this, [calculate].concat(args));
+}
 
 // Create the canvas
 var canvas = document.createElement("canvas");
@@ -223,26 +304,27 @@ document.body.appendChild(canvas);
 var sprites = [];
 
 function Sprite(position) {
-  this.position_ = position;
-  sprites.push(this);
+  var sprite = {
+    render: function(ctx) {
+      ctx.fillStyle = "#FF0000";
+      var x = position.x.get();
+      var y = position.y.get();
+      ctx.fillRect(x - 10, y - 10, 20, 20);
+    }
+  };
+
+  sprites.push(sprite);
+
+  defer(function() {
+    var idx = sprites.indexOf(sprite);
+
+    if (idx == -1) {
+      throw "Sprite cleaned up twice.";
+    }
+
+    sprites.splice(idx, 1);
+  });
 }
-
-Sprite.prototype.cleanup = function() {
-  var idx = sprites.indexOf(this);
-
-  if (idx == -1) {
-    throw "Sprite cleaned up twice.";
-  }
-
-  sprites.splice(idx, 1);
-};
-
-Sprite.prototype.render = function(ctx) {
-  ctx.fillStyle = "#FF0000";
-  var x = this.position_.x.get();
-  var y = this.position_.y.get();
-  ctx.fillRect(x - 10, y - 10, x + 10, x + 10);
-};
 
 function render() {
   ctx.fillStyle = "#000000";
@@ -255,7 +337,7 @@ function render() {
   }
 }
 
-var time = new Primitive(0);
+var time = new ReadWritePrimitive(0);
 
 // The main game loop
 var lastTime = Date.now();
@@ -277,7 +359,6 @@ function runAnimLoop(fn) {
   window.webkitRequestAnimationFrame(run);
 }
 
-var sprite = new Sprite(new Vector(time, time));
+var sprite = Sprite(Vector(Sum(Const(200), Product(Const(30), Sin(time))), Product(Const(20), time)));
 
 runAnimLoop(update);
-
