@@ -184,6 +184,35 @@ ListenerSet.prototype.remove = function(listener) {
   this.listeners[idx] = null;
 };
 
+function Primitive(value) {
+  this.value_ = value;
+  this.listeners_ = new ListenerSet();
+}
+
+Primitive.prototype.cleanup = function() {
+};
+
+Primitive.prototype.get = function() {
+  return this.value_;
+};
+
+Primitive.prototype.set = function(value) {
+  this.value_ = value;
+  this.listeners_.report();
+};
+
+Primitive.prototype.listeners = function() {
+  return this.listeners_;
+};
+
+function Vector(x, y) {
+  this.x = x;
+  this.y = y;
+}
+
+Vector.prototype.cleanup = function() {
+};
+
 // Create the canvas
 var canvas = document.createElement("canvas");
 var ctx = canvas.getContext("2d");
@@ -191,97 +220,52 @@ canvas.width = 512;
 canvas.height = 480;
 document.body.appendChild(canvas);
 
-var NUM_SQUARES = 100;
-var SQUARE_SIZE = 20;
-var SQUARE_SPEED_MAX = 10;
+var sprites = [];
 
-var quadTree = new QuadTree();
-
-function squareRect(square) {
-  return new Rect(
-      square[0], square[1],
-      square[0] + SQUARE_SIZE, square[1] + SQUARE_SIZE);
+function Sprite(position) {
+  this.position_ = position;
+  sprites.push(this);
 }
 
-function squareEntry(square) {
-  return new Entry(squareRect(square), square);
-}
+Sprite.prototype.cleanup = function() {
+  var idx = sprites.indexOf(this);
 
-var squares = new Array();
-for (var i = 0; i < NUM_SQUARES; ++i) {
-  var x = Math.random() * (canvas.width - SQUARE_SIZE);
-  var y = Math.random() * (canvas.height - SQUARE_SIZE);
-  var vx = (2 * Math.random() - 1) * SQUARE_SPEED_MAX;
-  var vy = (2 * Math.random() - 1) * SQUARE_SPEED_MAX;
-  squares[i] = [x, y, vx, vy];
-  quadTree.insert(squareEntry(squares[i]));
-}
-
-function updateTimers(dt) {
-  for (var i = 0; i < squares.length; ++i) {
-    var square = squares[i];
-
-    quadTree.remove(squareEntry(square));
-
-    square[0] += dt * square[2];
-    if (square[0] < 0 && square[2] < 0) {
-      square[2] *= -1;
-    }
-    if (square[0] + SQUARE_SIZE >= canvas.width && square[2] > 0) {
-      square[2] *= -1;
-    }
-
-    square[1] += dt * square[3];
-    if (square[1] < 0 && square[3] < 0) {
-      square[3] *= -1;
-    }
-    if (square[1] + SQUARE_SIZE >= canvas.height && square[3] > 0) {
-      square[3] *= -1;
-    }
-
-    quadTree.insert(squareEntry(square));
+  if (idx == -1) {
+    throw "Sprite cleaned up twice.";
   }
-}
+
+  sprites.splice(idx, 1);
+};
+
+Sprite.prototype.render = function(ctx) {
+  ctx.fillStyle = "#FF0000";
+  var x = this.position_.x.get();
+  var y = this.position_.y.get();
+  ctx.fillRect(x - 10, y - 10, x + 10, x + 10);
+};
 
 function render() {
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = "#FF0000";
-  ctx.strokeStyle = "#FF0000";
-  for (var i = 0; i < squares.length; ++i) {
-    var intersects = false;
-    var foundSelf = false;
-    quadTree.visit(squareRect(squares[i]), function(entry) {
-      if (entry.payload !== squares[i]) {
-        intersects = true;
-      } else {
-        foundSelf = true;
-      }
-    });
+  for (var i = 0; i < sprites.length; ++i) {
+    var sprite = sprites[i];
 
-    if (!foundSelf) {
-      throw "self not in array";
-    }
-
-    if (intersects) {
-      ctx.strokeRect(squares[i][0], squares[i][1], 20, 20);
-    } else {
-      ctx.fillRect(squares[i][0], squares[i][1], 20, 20);
-    }
+    sprite.render(ctx);
   }
 }
+
+var time = new Primitive(0);
 
 // The main game loop
 var lastTime = Date.now();
 function update() {
   var now = Date.now();
   var dt = Math.min(0.1, (now - lastTime) / 1000.0);
-
-  updateTimers(dt);
-  render();
-
   lastTime = now;
+  time.set(time.get() + dt);
+
+  render();
 }
 
 function runAnimLoop(fn) {
@@ -293,23 +277,7 @@ function runAnimLoop(fn) {
   window.webkitRequestAnimationFrame(run);
 }
 
-//runAnimLoop(update);
-var listenerSet = new ListenerSet();
+var sprite = new Sprite(new Vector(time, time));
 
-function listener(text) {
-  alert('listener');
-  listenerSet.remove(listener2);
-  //listenerSet.remove(listener);
-  //listenerSet.add(listener2);
-}
-
-function listener2(text) {
-  alert('listener2');
-}
-
-listenerSet.add(listener);
-listenerSet.add(listener2);
-
-listenerSet.report('hello');
-listenerSet.report('hello');
+runAnimLoop(update);
 
