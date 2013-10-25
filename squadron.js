@@ -67,7 +67,7 @@ QuadTree.prototype.insert = function(entry) {
 
 QuadTree.prototype.remove = function(entry) {
   this.findNode_(entry, function(node) {
-    
+
     // Find the payload in the list of entries.
     var idx = -1;
     for (var i = 0; i < node.entries_.length; ++i) {
@@ -144,13 +144,13 @@ function ListenerSet() {
   this.lockCount = 0;
 }
 
-ListenerSet.prototype.report = function() {
+ListenerSet.prototype.forEach = function(fn) {
   ++this.lockCount;
 
   for (var i = 0; i < this.listeners.length; ++i) {
     var listener = this.listeners[i];
     if (listener !== null) {
-      listener.apply(this, arguments);
+      fn(listener);
     }
   }
 
@@ -184,6 +184,16 @@ ListenerSet.prototype.remove = function(listener) {
   this.listeners[idx] = null;
 };
 
+Signal.prototype = new ListenerSet();
+Signal.prototype.constructor = Signal;
+
+Signal.prototype.report = function() {
+  var args = Array.prototype.slice.call(arguments, 0);
+  this.forEach(function(listener) {
+    listener.apply(this, args);
+  });
+};
+
 var deferred = [];
 
 function defer(fn) {
@@ -200,7 +210,7 @@ function cleanup() {
 
 function ReadPrimitive(value) {
   this.value_ = value;
-  this.listeners_ = new ListenerSet();
+  this.signal_ = new Signal();
 }
 
 ReadPrimitive.prototype.get = function() {
@@ -209,11 +219,11 @@ ReadPrimitive.prototype.get = function() {
 
 ReadPrimitive.prototype.set_ = function(value) {
   this.value_ = value;
-  this.listeners_.report();
+  this.signal_.report();
 };
 
 ReadPrimitive.prototype.listeners = function() {
-  return this.listeners_;
+  return this.signal_;
 };
 
 function Const(value) {
